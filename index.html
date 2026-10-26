@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Cleaner — Marketing Contacts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #F5F6F4;
+    --surface: #FFFFFF;
+    --surface-2: #EEF0EC;
+    --ink: #1B2420;
+    --ink-soft: #5B6660;
+    --line: #D7DBD3;
+    --accent: #2F6F4F;
+    --accent-ink: #FFFFFF;
+    --warn: #B5720A;
+    --warn-bg: #FBF1DE;
+    --bad: #A6402F;
+    --bad-bg: #FBEAE6;
+    --ok-bg: #E7F1EA;
+    --font-sans: 'IBM Plex Sans', -apple-system, Segoe UI, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #141815;
+      --surface: #1C2320;
+      --surface-2: #222A26;
+      --ink: #E9ECE8;
+      --ink-soft: #9AA69E;
+      --line: #313B35;
+      --accent: #5FAE85;
+      --accent-ink: #0D1512;
+      --warn: #E0A73F;
+      --warn-bg: #332A15;
+      --bad: #E08170;
+      --bad-bg: #3A211D;
+      --ok-bg: #1C2E23;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141815;
+    --surface: #1C2320;
+    --surface-2: #222A26;
+    --ink: #E9ECE8;
+    --ink-soft: #9AA69E;
+    --line: #313B35;
+    --accent: #5FAE85;
+    --accent-ink: #0D1512;
+    --warn: #E0A73F;
+    --warn-bg: #332A15;
+    --bad: #E08170;
+    --bad-bg: #3A211D;
+    --ok-bg: #1C2E23;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  header.top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 36px;
+    flex-wrap: wrap;
+  }
+  header.top h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  header.top p {
+    margin: 4px 0 0;
+    color: var(--ink-soft);
+    font-size: 14.5px;
+    max-width: 46ch;
+  }
+  .brandmark {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    padding: 5px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  /* ---- Upload zone ---- */
+  #dropzone {
+    border: 1.5px dashed var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    padding: 56px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  #dropzone.drag {
+    border-color: var(--accent);
+    background: var(--ok-bg);
+  }
+  #dropzone .icon {
+    width: 44px; height: 44px; margin: 0 auto 18px;
+    color: var(--accent);
+  }
+  #dropzone h2 { font-size: 17px; margin: 0 0 6px; font-weight: 600; }
+  #dropzone p { margin: 0; color: var(--ink-soft); font-size: 13.5px; }
+  #dropzone .formats {
+    margin-top: 14px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  #fileInput { display: none; }
+
+  /* ---- Processing state ---- */
+  #processing {
+    display: none;
+    text-align: center;
+    padding: 70px 24px;
+  }
+  .spinner {
+    width: 30px; height: 30px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 0 auto 18px;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #processing p { color: var(--ink-soft); font-size: 14px; }
+
+  /* ---- Results ---- */
+  #results { display: none; }
+
+  .filebar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 24px;
+    font-size: 13.5px; flex-wrap: wrap; gap: 10px;
+  }
+  .filebar .name { font-weight: 600; }
+  .filebar .meta { color: var(--ink-soft); font-family: var(--font-mono); font-size: 12px; }
+  .filebar button {
+    background: none; border: 1px solid var(--line); color: var(--ink);
+    padding: 6px 12px; border-radius: 7px; cursor: pointer; font-size: 12.5px;
+    font-family: var(--font-sans);
+  }
+  .filebar button:hover { border-color: var(--ink-soft); }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .stat {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 16px 14px;
+  }
+  .stat .n {
+    font-family: var(--font-mono); font-size: 26px; font-weight: 600;
+    line-height: 1;
+  }
+  .stat .l {
+    margin-top: 7px; font-size: 12px; color: var(--ink-soft);
+  }
+  .stat.warn .n { color: var(--warn); }
+  .stat.bad .n { color: var(--bad); }
+  .stat.ok .n { color: var(--accent); }
+
+  .compliance {
+    background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 28px;
+    font-size: 13.5px;
+  }
+  .compliance strong { display: block; margin-bottom: 4px; color: var(--warn); font-size: 12.5px;
+    text-transform: none; }
+  .compliance ul { margin: 6px 0 0; padding-left: 18px; }
+  .compliance li { margin-bottom: 2px; }
+
+  .download-row {
+    display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap;
+  }
+  .btn {
+    font-family: var(--font-sans);
+    font-size: 14px; font-weight: 600;
+    padding: 11px 20px; border-radius: 9px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line); }
+  .btn-secondary:hover { border-color: var(--ink-soft); }
+  .btn:disabled { opacity: .55; cursor: default; }
+
+  .tabs {
+    display: flex; gap: 4px; border-bottom: 1px solid var(--line);
+    margin-bottom: 16px; overflow-x: auto;
+  }
+  .tab {
+    padding: 10px 16px; font-size: 13.5px; font-weight: 500;
+    color: var(--ink-soft); cursor: pointer; white-space: nowrap;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab .count {
+    font-family: var(--font-mono); font-size: 11px;
+    background: var(--surface-2); padding: 1px 6px; border-radius: 999px;
+    margin-left: 6px;
+  }
+
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    overflow: auto; max-height: 560px;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  thead th {
+    position: sticky; top: 0;
+    background: var(--surface-2); text-align: left;
+    padding: 9px 12px; font-weight: 600; white-space: nowrap;
+    border-bottom: 1px solid var(--line); font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  tbody td {
+    padding: 8px 12px; border-bottom: 1px solid var(--line);
+    white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  }
+  tbody tr:hover { background: var(--surface-2); }
+  .tag {
+    display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 5px;
+    font-family: var(--font-mono);
+  }
+  .tag.bad { background: var(--bad-bg); color: var(--bad); }
+  .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.ok { background: var(--ok-bg); color: var(--accent); }
+  .primary-badge {
+    font-size: 10.5px; font-weight: 700; color: var(--accent);
+    font-family: var(--font-mono);
+  }
+  .empty-note { padding: 40px; text-align: center; color: var(--ink-soft); font-size: 13.5px; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  footer.note {
+    margin-top: 30px; font-size: 12px; color: var(--ink-soft); text-align: center;
+  }
+
+  @media (max-width: 640px) {
+    tbody td { max-width: 160px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>Data Cleaner</h1>
+      <p>Drop in a marketing contact spreadsheet — any headers, any length. Get back a validated, de-duplicated workbook.</p>
+    </div>
+    <div class="brandmark">runs entirely in your browser</div>
+  </header>
+
+  <div id="dropzone">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <path d="M12 15V3m0 0L7 8m5-5l5 5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2>Upload your spreadsheet</h2>
+    <p>Drag a file here, or click to browse</p>
+    <div class="formats">.XLSX · .XLS · .CSV</div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+  </div>
+
+  <div id="processing">
+    <div class="spinner"></div>
+    <p id="processingText">Reading file…</p>
+    <p style="font-size:12px;color:var(--ink-soft);margin-top:6px;">Large files (thousands of rows) may take a few seconds.</p>
+  </div>
+
+  <div id="results">
+    <div class="filebar">
+      <div>
+        <div class="name" id="fbName">—</div>
+        <div class="meta" id="fbMeta">—</div>
+      </div>
+      <button id="resetBtn">Upload a different file</button>
+    </div>
+
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="compliance" id="complianceBox" style="display:none;"></div>
+
+    <div class="download-row">
+      <button class="btn btn-primary" id="downloadBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-4-4m4 4l4-4M5 19h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download cleaned workbook (.xlsx)
+      </button>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+    <div id="panels"></div>
+  </div>
+
+  <footer class="note">Nothing you upload leaves your browser — all cleaning and matching happens locally.</footer>
+</div>
+
+<script>
+/* =========================================================================
+   STANDARD SCHEMA + HEADER SYNONYMS  (mirrors clean_marketing_data.py)
+   ========================================================================= */
+const STANDARD_SCHEMA = {
+  company_name: ["company","company name","companyname","organisation","organization","business name","firm","firm name","account name","customer name","name 1","name1","client name"],
+  contact_person: ["contact person","contact name","poc","point of contact","contact","salutation contact person","person name","attention","attn"],
+  designation: ["designation","job title","title","role","position","job role"],
+  email: ["email","e mail","email1","email address","work email","contact email","mail id","mailid"],
+  phone_mobile: ["mobile","mob","cell","mobile number","mob num","phone","phone number","contact no","contact number","mob num to print on invoice","mobile no"],
+  phone_landline: ["telephone","landline","office phone","std code","telephone no with std code","tel no","off phone"],
+  address_line1: ["street","address","address line 1","address1","street1","addr1"],
+  address_line2: ["street2","address line 2","address2","addr2"],
+  address_line3: ["street3","address line 3","address3","addr3"],
+  address_line4: ["street4","address line 4","address4","addr4"],
+  postal_code: ["postal code","pincode","pin","pin code","zip","zip code","zipcode"],
+  city: ["city","town"],
+  state: ["state","province","region"],
+  industry: ["industry","sector","business type","category","vertical"],
+  source: ["source","lead source","data source","channel"],
+  date_collected: ["date","date collected","created date","added on","acquired date"],
+  consent_status: ["consent","consent status","opt in","gdpr consent","marketing consent"],
+};
+const MULTI_COLUMN_TARGETS = new Set(["address_line1","address_line2","address_line3","address_line4"]);
+const COMPLIANCE_FIELDS = { source: "data SOURCE (where each record came from)",
+  date_collected: "DATE COLLECTED (how fresh each record is)",
+  consent_status: "CONSENT STATUS (marketing opt-in / compliance)" };
+const COMPLETENESS_WEIGHTS = { company_name:20, contact_person:15, email:20, phone_mobile:15,
+  phone_landline:5, address_line1:10, city:10, postal_code:5 };
+const MAX_COMPLETENESS = Object.values(COMPLETENESS_WEIGHTS).reduce((a,b)=>a+b,0);
+
+const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+const PLACEHOLDER_EMAIL_PATTERNS = ["dummy","test@","sample","xxx","noreply","no-reply","n/a","example.com","abc@","asdf"];
+const GENERIC_EMAIL_PREFIXES = ["info","sales","admin","contact","hello","support","office","enquiry","inquiry","mail"];
+const PLACEHOLDER_PHONE_PATTERNS = [/^(\d)\1{9,}$/, /^1234567890$/, /^0000000000$/];
+const LEGAL_SUFFIXES = ["PRIVATE LIMITED","PVT LTD","LIMITED","LTD","LLP","CORPORATION","CORP","INDIA","INC","CO"];
+const BLANK_HEADER_RE = /^unnamed[:\s]/i;
+const INDIAN_MOBILE_PREFIXES = ["6","7","8","9"];
+const SEQUENTIAL_10DIGIT = new Set(["1234567890","0123456789"]);
+const PLACEHOLDER_10DIGIT_RE = /^(\d)\1{9}$/;
+
+/* Groups whitespace-separated tokens back into whole numbers, preserving
+   original punctuation ('+', dashes) - needed so country-code prefixes
+   survive into classifyPhoneNumber. Mirrors _group_phone_segments in the
+   Python version. */
+function groupPhoneSegments(s){
+  const tokens = s.trim().split(/\s+/).filter(Boolean);
+  const groups = []; let buffer = []; let bufferDigits = 0;
+  for(const tok of tokens){
+    const d = tok.replace(/\D/g,"");
+    if(!d) continue;
+    if(d.length>=8){
+      if(buffer.length){ groups.push(buffer); buffer=[]; bufferDigits=0; }
+      groups.push([tok]);
+    } else {
+      buffer.push(tok); bufferDigits += d.length;
+      if(bufferDigits>=10){ groups.push(buffer); buffer=[]; bufferDigits=0; }
+    }
+  }
+  if(buffer.length) groups.push(buffer);
+  return groups.map(g=>g.join(" "));
+}
+function splitMultiValuePreservingFormat(raw, kind){
+  let s = cleanStr(raw);
+  if(!s) return [];
+  s = s.replace(/\r\n|\r|\n/g,"|");
+  s = s.replace(/\s+and\s+/gi,"|");
+  s = s.replace(/[,;/&]/g,"|");
+  const parts = s.split("|").map(p=>p.trim()).filter(Boolean);
+  if(kind==="phone"){
+    let expanded = [];
+    parts.forEach(p=>{ expanded = expanded.concat(groupPhoneSegments(p)); });
+    return expanded;
+  } else {
+    let expanded = [];
+    parts.forEach(p=>{ expanded = expanded.concat(p.split(/\s+/).filter(Boolean)); });
+    return expanded;
+  }
+}
+
+/* India-only phone classifier - structural validation only. Never claims a
+   number is actually registered on WhatsApp; only that it has the shape of
+   a valid Indian mobile number. Mirrors classify_phone_number in Python. */
+function classifyPhoneNumber(rawToken){
+  const original = cleanStr(rawToken);
+  if(!original) return {cleaned:"", country:"", numberType:"", status:"Invalid", reason:"Blank/missing"};
+
+  const digits = original.replace(/\D/g,"");
+  if(!digits) return {cleaned:"", country:"Unknown", numberType:"Unknown", status:"Invalid", reason:"No digits found"};
+
+  let core = null, foreignHint = false;
+  if(digits.startsWith("0091") && digits.length===14){ core = digits.slice(4); }
+  else if(digits.startsWith("91") && digits.length===12){ core = digits.slice(2); }
+  else if(digits.length===10){ core = digits; }
+  else if(digits.startsWith("0") && digits.length===11){ core = digits.slice(1); }
+  else if((original.trim().startsWith("+") || digits.startsWith("00")) && !digits.replace(/^0+/,"").startsWith("91")){
+    foreignHint = true;
+  }
+
+  if(foreignHint) return {cleaned:"", country:"Foreign (non-India)", numberType:"Unknown", status:"Invalid", reason:"Foreign country code detected"};
+  if(core===null) return {cleaned:"", country:"Unknown", numberType:"Unknown", status:"Invalid", reason:`Unrecognized/incomplete format (${digits.length} digits)`};
+  if(core.length!==10) return {cleaned:"", country:"India", numberType:"Unknown", status:"Invalid", reason:`Not exactly 10 digits after cleaning (${core.length} digits)`};
+  if(PLACEHOLDER_10DIGIT_RE.test(core) || SEQUENTIAL_10DIGIT.has(core)){
+    return {cleaned:core, country:"India", numberType:"Unknown", status:"Invalid", reason:"Placeholder/fake pattern (repeated or sequential digits)"};
+  }
+  if(INDIAN_MOBILE_PREFIXES.includes(core[0])){
+    return {cleaned:core, country:"India", numberType:"Mobile", status:"Valid", reason:""};
+  }
+  return {cleaned:core, country:"India", numberType:"Landline/Other", status:"Invalid", reason:"Not a valid Indian mobile prefix (likely landline)"};
+}
+
+/* =========================================================================
+   MULTI-VALUE CELL SPLITTING
+   Handles cells holding more than one phone/email, separated by newlines,
+   commas, "and", slashes, or just extra whitespace with no punctuation at
+   all (e.g. "9870340080  8384802066"). Each value becomes its own row
+   later, so validation checks one clean number/email instead of a
+   concatenated blob that fails every length/format check.
+   ========================================================================= */
+function splitPhoneTokens(s){
+  const tokens = s.trim().split(/\s+/).filter(Boolean);
+  const results = []; let buffer = "";
+  for(const tok of tokens){
+    const digits = tok.replace(/\D/g,"");
+    if(!digits) continue;
+    if(digits.length>=8){
+      if(buffer){ results.push(buffer); buffer=""; }
+      results.push(digits);
+    } else {
+      buffer += digits;
+      if(buffer.length>=10){ results.push(buffer); buffer=""; }
+    }
+  }
+  if(buffer) results.push(buffer);
+  return results;
+}
+function splitMultiValue(raw, kind){
+  let s = cleanStr(raw);
+  if(!s) return [];
+  s = s.replace(/\r\n|\r|\n/g,"|");
+  s = s.replace(/\s+and\s+/gi,"|");
+  s = s.replace(/[,;/&]/g,"|");
+  const parts = s.split("|").map(p=>p.trim()).filter(Boolean);
+  if(kind==="phone"){
+    let expanded = [];
+    parts.forEach(p=>{ expanded = expanded.concat(splitPhoneTokens(p)); });
+    return expanded;
+  } else {
+    let expanded = [];
+    parts.forEach(p=>{ expanded = expanded.concat(p.split(/\s+/).filter(Boolean)); });
+    return expanded;
+  }
+}
+function expandMultiValueRows(records){
+  const result = [];
+  for(const rec of records){
+    const phones = splitMultiValuePreservingFormat(rec.phone_mobile, "phone");
+    const emails = splitMultiValue(rec.email, "email");
+    const nP = phones.length, nE = emails.length;
+
+    if(nP<=1 && nE<=1){ result.push(rec); continue; }
+
+    if(nP===nE && nP>1){
+      for(let i=0;i<nP;i++){
+        const r = {...rec, phone_mobile: phones[i], email: emails[i],
+          multi_value_split_note: `split ${i+1} of ${nP} - one cell had multiple phone+email pairs`};
+        result.push(r);
+      }
+      continue;
+    }
+
+    const phoneList = nP>1 ? phones : [rec.phone_mobile];
+    const baseRows = phoneList.map((ph,i)=>{
+      const r = {...rec, phone_mobile: ph};
+      if(nP>1) r.multi_value_split_note = `phone ${i+1} of ${nP} from one cell`;
+      return r;
+    });
+    for(const br of baseRows){
+      const emailList = splitMultiValue(br.email, "email");
+      if(emailList.length>1){
+        emailList.forEach((em,j)=>{
+          const r2 = {...br, email: em};
+          const note = `email ${j+1} of ${emailList.length} from one cell`;
+          r2.multi_value_split_note = br.multi_value_split_note ? `${br.multi_value_split_note}; ${note}` : note;
+          result.push(r2);
+        });
+      } else {
+        result.push(br);
+      }
+    }
+  }
+  return result;
+}
+
+/* =========================================================================
+   SMALL UTILITIES
+   ========================================================================= */
+function cleanStr(v){
+  if (v===null || v===undefined) return "";
+  let s = String(v).trim();
+  if (["nan","none","null","n/a","na","-"].includes(s.toLowerCase())) return "";
+  return s;
+}
+function normalizeHeader(h){
+  return String(h).toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+}
+// Longest common subsequence length (DP)
+function lcsLength(a,b){
+  const m=a.length,n=b.length;
+  if(m===0||n===0) return 0;
+  let prev = new Array(n+1).fill(0);
+  for(let i=1;i<=m;i++){
+    let cur = new Array(n+1).fill(0);
+    for(let j=1;j<=n;j++){
+      cur[j] = a[i-1]===b[j-1] ? prev[j-1]+1 : Math.max(prev[j], cur[j-1]);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+// rapidfuzz's default fuzz.ratio is Indel-distance based, which is
+// equivalent to: ratio = 100 * 2*LCS(a,b) / (len(a)+len(b)).
+// (Plain substitution-based Levenshtein scores differently and over-counts
+// similarity for single-character edits, e.g. "PLANT 1" vs "PLANT 2" - using
+// LCS keeps this consistent with the Python version's duplicate detection.)
+function fuzzRatio(a,b){
+  a=a||""; b=b||"";
+  if(a===b) return 100;
+  const total = a.length+b.length;
+  if(total===0) return 100;
+  const lcs = lcsLength(a,b);
+  return Math.round(100*(2*lcs)/total*100)/100;
+}
+function tokenSortRatio(a,b){
+  const sortTok = s => s.split(/\s+/).filter(Boolean).sort().join(" ");
+  return fuzzRatio(sortTok(a), sortTok(b));
+}
+
+/* =========================================================================
+   VALIDATION
+   ========================================================================= */
+function validateEmail(email){
+  email = cleanStr(email);
+  if(!email) return {value:"", valid:false, placeholder:false, generic:false, note:"missing"};
+  const low = email.toLowerCase();
+  const validFormat = EMAIL_RE.test(email);
+  const isPlaceholder = PLACEHOLDER_EMAIL_PATTERNS.some(p=>low.includes(p));
+  const local = low.split("@")[0] || low;
+  const isGeneric = GENERIC_EMAIL_PREFIXES.some(g=>local===g || local.startsWith(g));
+  let note = "ok";
+  if(!validFormat) note = "invalid format";
+  else if(isPlaceholder) note = "placeholder/fake email";
+  else if(isGeneric) note = "generic mailbox (not a named person)";
+  return {value:email, valid: validFormat && !isPlaceholder, placeholder:isPlaceholder, generic:isGeneric, note};
+}
+function validatePhone(phone){
+  let raw = cleanStr(phone);
+  if(!raw) return {value:"", digits:"", valid:false, placeholder:false, note:"missing"};
+  if(raw.endsWith(".0")) raw = raw.slice(0,-2);
+  const digits = raw.replace(/\D/g,"");
+  const c = classifyPhoneNumber(raw);
+  const isPlaceholder = c.reason === "Placeholder/fake pattern (repeated or sequential digits)";
+  const valid = c.status === "Valid";
+  let note;
+  if(isPlaceholder) note = "placeholder/fake number";
+  else if(c.country === "Foreign (non-India)") note = "foreign number - excluded (India-only marketing list)";
+  else if(c.numberType === "Landline/Other" && c.country === "India") note = "Indian landline - not a mobile number";
+  else if(!valid) note = c.reason ? `invalid - ${c.reason}` : "invalid / unparseable";
+  else note = "ok";
+  return {value:raw, digits, valid, placeholder:isPlaceholder, note};
+}
+function normalizeCompanyName(name){
+  name = cleanStr(name).toUpperCase();
+  name = name.replace(/\(\s*P\s*\)/g,"PVT");
+  name = name.replace(/[.,()&/\\-]/g," ");
+  name = name.replace(/\s+/g," ").trim();
+  for(const suf of LEGAL_SUFFIXES){
+    const pat = new RegExp("\\b"+suf.replace(/ /g,"\\s+")+"\\b","g");
+    name = name.replace(pat,"");
+  }
+  return name.replace(/\s+/g," ").trim();
+}
+
+/* =========================================================================
+   HEADER MAPPING
+   ========================================================================= */
+function buildHeaderMapping(columns){
+  const mapping = {};
+  const report = [];
+  const candidates = [];
+
+  for(const col of columns){
+    if(BLANK_HEADER_RE.test(String(col))){
+      mapping[col]=null;
+      report.push({raw:col, target:null, method:"unmapped - blank original header, cannot infer meaning", confidence:0});
+      continue;
+    }
+    const normCol = normalizeHeader(col);
+    let bestTarget=null, bestScore=0, bestMethod=null;
+    outer:
+    for(const target in STANDARD_SCHEMA){
+      for(const syn of STANDARD_SCHEMA[target]){
+        if(normCol===syn){ bestTarget=target; bestScore=100; bestMethod="exact match"; break outer; }
+        const score = fuzzRatio(normCol, syn);
+        if(score>bestScore){ bestTarget=target; bestScore=score; bestMethod="fuzzy match"; }
+      }
+    }
+    candidates.push({col, target:bestTarget, score:bestScore, method:bestMethod});
+  }
+
+  const FUZZY_THRESHOLD = 85;
+  const bestByTarget = {};
+  for(const c of candidates){
+    if(!c.target || c.score<FUZZY_THRESHOLD) continue;
+    if(MULTI_COLUMN_TARGETS.has(c.target)) continue;
+    if(!bestByTarget[c.target] || c.score>bestByTarget[c.target].score){
+      bestByTarget[c.target] = {col:c.col, score:c.score};
+    }
+  }
+  for(const c of candidates){
+    if(!c.target || c.score<FUZZY_THRESHOLD){
+      mapping[c.col]=null;
+      report.push({raw:c.col, target:null, method:"unmapped - no confident match, needs manual review", confidence:c.score});
+    } else if(MULTI_COLUMN_TARGETS.has(c.target)){
+      mapping[c.col]=c.target;
+      report.push({raw:c.col, target:c.target, method:c.method, confidence:c.score});
+    } else if(bestByTarget[c.target].col===c.col){
+      mapping[c.col]=c.target;
+      report.push({raw:c.col, target:c.target, method:c.method, confidence:c.score});
+    } else {
+      mapping[c.col]=null;
+      report.push({raw:c.col, target:null, method:`unmapped - conflicted with a stronger match for '${c.target}'`, confidence:c.score});
+    }
+  }
+  return {mapping, report};
+}
+
+/* =========================================================================
+   MAIN PIPELINE
+   ========================================================================= */
+function runPipeline(rawRows, columns){
+  const {mapping, report:mappingReport} = buildHeaderMapping(columns);
+  const stdFields = Object.keys(STANDARD_SCHEMA);
+
+  let stdRecords = rawRows.map((rawRow)=>{
+    const std = {};
+    stdFields.forEach(f=>std[f]="");
+    for(const col of columns){
+      const target = mapping[col];
+      if(!target) continue;
+      if(std[target]==="") std[target] = cleanStr(rawRow[col]);
+    }
+    return std;
+  });
+  stdRecords = expandMultiValueRows(stdRecords);
+
+  const work = stdRecords.map((std, idx)=>{
+    const emailChk = validateEmail(std.email);
+    const phoneM = validatePhone(std.phone_mobile);
+    const phoneL = validatePhone(std.phone_landline);
+    let completeness=0;
+    for(const f in COMPLETENESS_WEIGHTS){ if(std[f]) completeness+=COMPLETENESS_WEIGHTS[f]; }
+    const completenessPct = Math.round(1000*completeness/MAX_COMPLETENESS)/10;
+    const phoneOk = phoneM.valid || phoneL.valid;
+
+    const issues=[];
+    if(!std.company_name) issues.push("missing company name");
+    if(!emailChk.value) issues.push("missing email");
+    else if(!emailChk.valid && !emailChk.placeholder && emailChk.note==="invalid format") issues.push("invalid email format");
+    else if(emailChk.placeholder) issues.push("placeholder/fake email");
+    else if(emailChk.generic) issues.push("generic (non-personal) email");
+    if(!std.phone_mobile && !std.phone_landline) issues.push("missing phone");
+    else if(!phoneOk) issues.push("invalid/placeholder phone");
+    if(!std.city && !std.address_line1) issues.push("missing location info");
+
+    return {
+      idx,
+      company_name: std.company_name,
+      company_key: normalizeCompanyName(std.company_name),
+      contact_person: std.contact_person,
+      designation: std.designation,
+      email: emailChk.value, email_note: emailChk.note,
+      phone_mobile: std.phone_mobile, phone_mobile_note: phoneM.note,
+      phone_landline: std.phone_landline, phone_landline_note: phoneL.note,
+      address_line1: std.address_line1, address_line2: std.address_line2,
+      city: std.city, state: std.state, postal_code: std.postal_code,
+      industry: std.industry, source: std.source, date_collected: std.date_collected,
+      consent_status: std.consent_status,
+      completeness_pct: completenessPct,
+      phone_ok: phoneOk, email_ok: emailChk.valid,
+      issues: issues.length? issues.join("; ") : "none",
+      email_shared_flag: "", phone_shared_flag: "",
+      cluster_key: "", possible_duplicate_of: "",
+      is_primary_contact: true, contacts_at_this_company: 1,
+      multi_value_split_note: std.multi_value_split_note || "",
+    };
+  });
+
+  // shared email/phone across many companies
+  const emailCompanySets = {}, phoneCompanySets = {};
+  work.forEach(r=>{
+    if(r.email){ (emailCompanySets[r.email] ??= new Set()).add(r.company_key); }
+    if(r.phone_mobile){ (phoneCompanySets[r.phone_mobile] ??= new Set()).add(r.company_key); }
+  });
+  work.forEach(r=>{
+    if(r.email && emailCompanySets[r.email].size>=3) r.email_shared_flag = "shared across many companies (likely placeholder)";
+    if(r.phone_mobile && phoneCompanySets[r.phone_mobile].size>=3) r.phone_shared_flag = "shared across many companies (likely placeholder)";
+  });
+
+  // group rows by exact normalized company key
+  const groups = {};
+  work.forEach(r=>{
+    const key = r.company_key || `__blank_${r.idx}`;
+    (groups[key] ??= []).push(r);
+  });
+  const keys = Object.keys(groups).filter(k=>!k.startsWith("__blank_"));
+
+  // union-find, blocked by first 2 chars to keep it fast on large files
+  const parent = {}; keys.forEach(k=>parent[k]=k);
+  function find(k){ while(parent[k]!==k){ parent[k]=parent[parent[k]]; k=parent[k]; } return k; }
+  function union(a,b){ const ra=find(a), rb=find(b); if(ra!==rb) parent[ra]=rb; }
+
+  const blocks = {};
+  function blockKeysFor(k){
+    const keys = new Set();
+    const compact = k.replace(/\s+/g,"");
+    keys.add(compact.slice(0,2) || "??");
+    // also bucket by the start of the *last* token, so a leading extra
+    // word ("X Sun Shine Steel" vs "Sun Shine Steel") still lands in a
+    // shared bucket with the un-prefixed version
+    const tokens = k.split(/\s+/).filter(Boolean);
+    if(tokens.length>1) keys.add(tokens[tokens.length-1].slice(0,2) || "??");
+    return keys;
+  }
+  keys.forEach(k=>{
+    blockKeysFor(k).forEach(bk=>{ (blocks[bk] ??= []).push(k); });
+  });
+
+  const comparedPairs = new Set();
+
+  const AUTO_MERGE_BY_NAME_ONLY = 97;
+  const AUTO_MERGE_BY_CONTACT_FLOOR = 80;
+  const POSSIBLE_DUP_FLOOR = 90;
+  const possibleDupNotes = {};
+
+  for(const b in blocks){
+    const bk = blocks[b];
+    for(let i=0;i<bk.length;i++){
+      for(let j=i+1;j<bk.length;j++){
+        const k1=bk[i], k2=bk[j];
+        const pairId = k1<k2 ? k1+"\u0001"+k2 : k2+"\u0001"+k1;
+        if(comparedPairs.has(pairId)) continue;
+        comparedPairs.add(pairId);
+        const score = tokenSortRatio(k1,k2);
+        if(score<POSSIBLE_DUP_FLOOR) continue;
+        const rows1=groups[k1], rows2=groups[k2];
+        const emails1=new Set(rows1.map(r=>r.email).filter(Boolean));
+        const phones1=new Set(rows1.map(r=>r.phone_mobile).filter(Boolean));
+        const sharesContact = rows2.some(r=>(r.email&&emails1.has(r.email))||(r.phone_mobile&&phones1.has(r.phone_mobile)));
+
+        if(score>=AUTO_MERGE_BY_NAME_ONLY){ union(k1,k2); }
+        else if(sharesContact && score>=AUTO_MERGE_BY_CONTACT_FLOOR){ union(k1,k2); }
+        else {
+          (possibleDupNotes[k1] ??= new Set()).add(k2);
+          (possibleDupNotes[k2] ??= new Set()).add(k1);
+        }
+      }
+    }
+  }
+
+  const clusterOf = {}; keys.forEach(k=>clusterOf[k]=find(k));
+  work.forEach(r=>{
+    r.cluster_key = r.company_key ? (clusterOf[r.company_key] ?? r.company_key) : `blank_${r.idx}`;
+  });
+  work.forEach(r=>{
+    const notes = possibleDupNotes[r.company_key];
+    if(!notes) return;
+    const parts = [...notes].filter(n => clusterOf[n]!==clusterOf[r.company_key]).slice(0,3);
+    if(parts.length) r.possible_duplicate_of = parts.join("; ");
+  });
+
+  // rank contacts within a cluster
+  const byCluster = {};
+  work.forEach(r=>{ (byCluster[r.cluster_key] ??= []).push(r); });
+  for(const ck in byCluster){
+    const rows = byCluster[ck];
+    rows.sort((a,b)=>{
+      if(a.email_ok!==b.email_ok) return b.email_ok-a.email_ok;
+      if(a.phone_ok!==b.phone_ok) return b.phone_ok-a.phone_ok;
+      return b.completeness_pct-a.completeness_pct;
+    });
+    rows.forEach((r,i)=>{ r.is_primary_contact = (i===0); r.contacts_at_this_company = rows.length; });
+  }
+
+  const unmappedColumns = Object.keys(mapping).filter(c=>mapping[c]===null);
+  const complianceWarnings = [];
+  for(const f in COMPLIANCE_FIELDS){
+    if(!columns.some(c=>mapping[c]===f)) complianceWarnings.push(`No column found for ${COMPLIANCE_FIELDS[f]}.`);
+  }
+
+  const summary = {
+    total_rows: work.length,
+    unique_companies: new Set(work.map(r=>r.cluster_key)).size,
+    duplicate_rows: work.filter(r=>r.contacts_at_this_company>1).length,
+    missing_email: work.filter(r=>!r.email).length,
+    invalid_placeholder_email: work.filter(r=>["invalid format","placeholder/fake email"].includes(r.email_note)).length,
+    generic_email: work.filter(r=>r.email_note==="generic mailbox (not a named person)").length,
+    missing_phone: work.filter(r=>!r.phone_mobile && !r.phone_landline).length,
+    invalid_placeholder_phone: work.filter(r=>!r.phone_ok).length,
+    avg_completeness: Math.round(10*work.reduce((a,r)=>a+r.completeness_pct,0)/work.length)/10,
+    rows_with_issues: work.filter(r=>r.issues!=="none").length,
+    rows_split_from_multi_value_cells: work.filter(r=>r.multi_value_split_note).length,
+    unmapped_columns: unmappedColumns,
+    compliance_warnings: complianceWarnings,
+  };
+
+  return {work, mappingReport, summary};
+}
+
+/* =========================================================================
+   UI WIRING
+   ========================================================================= */
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const processingEl = document.getElementById('processing');
+const processingText = document.getElementById('processingText');
+const resultsEl = document.getElementById('results');
+let currentResult = null, currentFileName = "";
+
+dropzone.addEventListener('click', ()=>fileInput.click());
+dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e=>{
+  if(e.target.files.length) handleFile(e.target.files[0]);
+});
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  resultsEl.style.display='none';
+  dropzone.style.display='block';
+  fileInput.value='';
+});
+
+function handleFile(file){
+  dropzone.style.display='none';
+  processingEl.style.display='block';
+  processingText.textContent = 'Reading file…';
+  currentFileName = file.name;
+
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    setTimeout(()=>{
+      try{
+        processingText.textContent = 'Mapping headers and validating rows…';
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        const sheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, {defval:""});
+        const columns = Object.keys(rows[0] || {});
+        setTimeout(()=>{
+          const result = runPipeline(rows, columns);
+          currentResult = result;
+          processingEl.style.display='none';
+          renderResults(result, file);
+        }, 30);
+      }catch(err){
+        processingText.textContent = 'Could not read that file: ' + err.message;
+        console.error(err);
+      }
+    }, 30);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderResults(result, file){
+  const s = result.summary;
+  document.getElementById('fbName').textContent = file.name;
+  document.getElementById('fbMeta').textContent =
+    `${s.total_rows} rows · ${s.unique_companies} unique companies after de-dup`;
+
+  const stats = [
+    {n:s.total_rows, l:'Total records', cls:''},
+    {n:s.unique_companies, l:'Unique companies', cls:'ok'},
+    {n:s.duplicate_rows, l:'Duplicate contact rows', cls: s.duplicate_rows? 'warn':''},
+    {n:s.missing_email, l:'Missing email', cls: s.missing_email? 'bad':''},
+    {n:s.invalid_placeholder_email, l:'Invalid / fake email', cls: s.invalid_placeholder_email? 'bad':''},
+    {n:s.missing_phone, l:'Missing phone', cls: s.missing_phone? 'bad':''},
+    {n:s.invalid_placeholder_phone, l:'Invalid / fake phone', cls: s.invalid_placeholder_phone? 'bad':''},
+    {n:s.rows_split_from_multi_value_cells, l:'Rows split from multi-value cells', cls: s.rows_split_from_multi_value_cells? 'warn':''},
+    {n:s.avg_completeness+'%', l:'Avg. completeness', cls:''},
+  ];
+  document.getElementById('statGrid').innerHTML = stats.map(st=>
+    `<div class="stat ${st.cls}"><div class="n">${st.n}</div><div class="l">${st.l}</div></div>`
+  ).join('');
+
+  const complianceBox = document.getElementById('complianceBox');
+  let complianceHtml = '';
+  if(s.compliance_warnings.length){
+    complianceHtml += `<strong>Compliance gaps in this file</strong><ul>${s.compliance_warnings.map(w=>`<li>${w}</li>`).join('')}</ul>`;
+  }
+  if(s.unmapped_columns.length){
+    complianceHtml += `<strong style="margin-top:${s.compliance_warnings.length?'10px':'0'}">Columns not recognized (check Header Mapping tab)</strong><ul>${s.unmapped_columns.map(c=>`<li>${escapeHtml(c)}</li>`).join('')}</ul>`;
+  }
+  if(complianceHtml){ complianceBox.style.display='block'; complianceBox.innerHTML = complianceHtml; }
+  else { complianceBox.style.display='none'; }
+
+  const work = result.work;
+  const masterRows = work.filter(r=>r.is_primary_contact || r.contacts_at_this_company===1)
+    .sort((a,b)=> (a.company_name||"").localeCompare(b.company_name||""));
+  const reviewRows = work.filter(r=>r.issues!=="none" || r.possible_duplicate_of)
+    .sort((a,b)=> a.completeness_pct-b.completeness_pct);
+  const dupRows = work.filter(r=>r.contacts_at_this_company>1)
+    .sort((a,b)=> (a.cluster_key||"").localeCompare(b.cluster_key||"") || (b.is_primary_contact - a.is_primary_contact));
+
+  const tabsDef = [
+    {id:'master', label:'Clean Master List', rows:masterRows, cols:masterCols},
+    {id:'review', label:'Needs Review', rows:reviewRows, cols:reviewCols},
+    {id:'dup', label:'Duplicate Contacts', rows:dupRows, cols:dupCols},
+    {id:'map', label:'Header Mapping Used', rows:result.mappingReport, cols:mapCols, isMapping:true},
+  ];
+
+  document.getElementById('tabs').innerHTML = tabsDef.map((t,i)=>
+    `<div class="tab ${i===0?'active':''}" data-tab="${t.id}">${t.label} <span class="count">${t.rows.length}</span></div>`
+  ).join('');
+
+  document.getElementById('panels').innerHTML = tabsDef.map((t,i)=>
+    `<div class="panel ${i===0?'active':''}" id="panel-${t.id}">${renderTable(t.rows, t.cols, t.isMapping)}</div>`
+  ).join('');
+
+  document.querySelectorAll('.tab').forEach(tabEl=>{
+    tabEl.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+      tabEl.classList.add('active');
+      document.getElementById('panel-'+tabEl.dataset.tab).classList.add('active');
+    });
+  });
+
+  resultsEl.style.display='block';
+}
+
+const masterCols = [
+  ['company_name','Company'],['contact_person','Contact'],['designation','Designation'],
+  ['email','Email'],['email_note','Email status'],
+  ['phone_mobile','Mobile'],['phone_mobile_note','Phone status'],
+  ['city','City'],['state','State'],['completeness_pct','Completeness %'],['issues','Issues'],
+  ['multi_value_split_note','Split from one cell?'],
+];
+const reviewCols = [
+  ['company_name','Company'],['contact_person','Contact'],['email','Email'],['email_note','Email status'],
+  ['phone_mobile','Mobile'],['phone_mobile_note','Phone status'],['completeness_pct','Completeness %'],
+  ['issues','Issues'],['possible_duplicate_of','Possible duplicate of'],
+];
+const dupCols = [
+  ['cluster_key','Group'],['company_name','Company'],['is_primary_contact','Primary?'],
+  ['contact_person','Contact'],['email','Email'],['phone_mobile','Mobile'],['city','City'],
+];
+const mapCols = [['raw','Original column'],['target','Mapped to'],['method','Method'],['confidence','Confidence']];
+
+function renderTable(rows, cols, isMapping){
+  if(!rows.length) return `<div class="table-wrap"><div class="empty-note">Nothing here — good sign.</div></div>`;
+  const thead = `<thead><tr>${cols.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead>`;
+  const tbody = rows.map(r=>{
+    const tds = cols.map(([key])=>{
+      let val = r[key];
+      if(key==='is_primary_contact') return `<td>${val? '<span class="primary-badge">PRIMARY</span>':''}</td>`;
+      if(key==='email_note' || key==='phone_mobile_note'){
+        const cls = val==='ok' ? 'ok' : (val && val.includes('placeholder')) ? 'bad' : (val && val!=='missing') ? 'warn' : '';
+        return `<td>${val? `<span class="tag ${cls}">${escapeHtml(val)}</span>` : ''}</td>`;
+      }
+      if(key==='issues'){
+        if(val==='none') return `<td><span class="tag ok">none</span></td>`;
+        return `<td>${escapeHtml(val)}</td>`;
+      }
+      if(key==='confidence' && typeof val==='number') val = val.toFixed(0)+'%';
+      if(key==='target' && isMapping && val===null) return `<td><span class="tag bad">unmapped</span></td>`;
+      return `<td>${val===undefined||val===null||val===''? '' : escapeHtml(String(val))}</td>`;
+    }).join('');
+    return `<tr>${tds}</tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>`;
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* =========================================================================
+   DOWNLOAD (multi-sheet workbook via SheetJS + downloads capability)
+   ========================================================================= */
+document.getElementById('downloadBtn').addEventListener('click', async ()=>{
+  if(!currentResult) return;
+  const btn = document.getElementById('downloadBtn');
+  const originalLabel = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Preparing file…';
+
+  try{
+    const wb = XLSX.utils.book_new();
+    const s = currentResult.summary;
+    const summaryAOA = [
+      ['Metric','Value'],
+      ['Total records in file', s.total_rows],
+      ['Unique companies after de-duplication', s.unique_companies],
+      ['Duplicate contact rows', s.duplicate_rows],
+      ['Rows missing email entirely', s.missing_email],
+      ['Rows with invalid or placeholder/fake email', s.invalid_placeholder_email],
+      ['Rows with generic (non-personal) email', s.generic_email],
+      ['Rows missing phone entirely', s.missing_phone],
+      ['Rows with invalid or placeholder/fake phone', s.invalid_placeholder_phone],
+      ['Average completeness score (%)', s.avg_completeness],
+      ['Rows with at least one flagged issue', s.rows_with_issues],
+      ['', ''],
+      ['UNMAPPED COLUMNS (review manually):', s.unmapped_columns.join(', ') || 'none'],
+      ['', ''],
+      ['COMPLIANCE WARNINGS:', ''],
+      ...(s.compliance_warnings.length ? s.compliance_warnings.map(w=>['', w]) : [['', 'none']]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryAOA), 'Summary');
+
+    const work = currentResult.work;
+    const masterRows = work.filter(r=>r.is_primary_contact || r.contacts_at_this_company===1)
+      .sort((a,b)=> (a.company_name||"").localeCompare(b.company_name||""));
+    const reviewRows = work.filter(r=>r.issues!=="none" || r.possible_duplicate_of)
+      .sort((a,b)=> a.completeness_pct-b.completeness_pct);
+    const dupRows = work.filter(r=>r.contacts_at_this_company>1)
+      .sort((a,b)=> (a.cluster_key||"").localeCompare(b.cluster_key||""));
+
+    const fullCols = ['company_name','contact_person','designation','email','email_note','email_shared_flag',
+      'phone_mobile','phone_mobile_note','phone_shared_flag','phone_landline','phone_landline_note',
+      'address_line1','address_line2','city','state','postal_code','industry','source','date_collected',
+      'consent_status','completeness_pct','issues','possible_duplicate_of','multi_value_split_note',
+      'is_primary_contact','contacts_at_this_company'];
+
+    function toSheet(rows){
+      const data = rows.map(r=>{ const o={}; fullCols.forEach(c=>o[c]=r[c]); return o; });
+      return XLSX.utils.json_to_sheet(data);
+    }
+    XLSX.utils.book_append_sheet(wb, toSheet(masterRows), 'Clean_Master_List');
+    XLSX.utils.book_append_sheet(wb, toSheet(reviewRows), 'Needs_Review');
+    XLSX.utils.book_append_sheet(wb, toSheet(dupRows), 'Duplicate_Contacts');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(currentResult.mappingReport), 'Header_Mapping_Used');
+
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    const blob = new Blob([wbout], {type:'application/octet-stream'});
+
+    const outName = currentFileName.replace(/\.(xlsx|xls|csv)$/i,'') + '_CLEANED.xlsx';
+
+    // claude.use() only exists inside the claude.ai artifact runtime.
+    // On a normal hosted website, `claude` is undefined, so fall back to a
+    // plain browser download (this is the path that runs once hosted).
+    const hasClaudeRuntime = (typeof claude !== 'undefined') && claude && typeof claude.use === 'function';
+    const downloads = hasClaudeRuntime ? await claude.use("downloads") : null;
+    if(!downloads){
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = outName; a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      await downloads.save({filename: outName, data: blob});
+    }
+  }catch(err){
+    if(err && err.code === 'declined'){
+      // viewer said no — do nothing further
+    } else {
+      console.error(err);
+      alert('Could not prepare the download: ' + (err && err.message ? err.message : err));
+    }
+  } finally {
+    btn.disabled = false; btn.innerHTML = originalLabel;
+  }
+});
+</script>
+</body>
+</html>
